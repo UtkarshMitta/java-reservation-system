@@ -80,3 +80,5 @@ lsof -ti:8081 | xargs kill -9
 **Client won't connect:**
 - Make sure the server is running first
 - Verify server is on port 8081
+
+Utkarsh Mittal (um2100), Snigdha Shrivastava (ss19776)
