@@ -51,7 +51,7 @@ public class BookingController {
 
     @PostMapping("/holds/{id}/confirm")
     public ResponseEntity<?> confirmHold(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
         try {
             Long userId = getUserId(token);
@@ -66,7 +66,7 @@ public class BookingController {
 
     @DeleteMapping("/holds/{id}")
     public ResponseEntity<?> cancelHold(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
         try {
             Long userId = getUserId(token);
@@ -84,7 +84,7 @@ public class BookingController {
 
     @PostMapping("/reservations/{id}/cancel")
     public ResponseEntity<?> cancelReservation(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestHeader(value = "Authorization", required = false) String token) {
         try {
             Long userId = getUserId(token);

@@ -7,6 +7,7 @@ import edu.nyu.cs9053.reservo.server.model.Resource;
 import edu.nyu.cs9053.reservo.server.model.TimeSlot;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -45,6 +46,9 @@ public class ReservationService {
 
     @Autowired
     private TimeSlotGeneratorService timeSlotGeneratorService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Value("${reservo.hold.ttl-seconds:60}")
     private int holdTtlSeconds;
@@ -376,6 +380,77 @@ public class ReservationService {
         return holdDao.findByUser(userId);
     }
 
+    public List<Map<String, Object>> getTimeSlotsForResource(Long resourceId) {
+        List<TimeSlot> slots = timeSlotDao.findByResource(resourceId);
+        return slots.stream().map(slot -> {
+            Map<String, Object> slotMap = new HashMap<>();
+            slotMap.put("id", slot.getId());
+            slotMap.put("resourceId", slot.getResourceId());
+            slotMap.put("startTs", slot.getStartTs().toString());
+            slotMap.put("endTs", slot.getEndTs().toString());
+            slotMap.put("capacityRemaining", slot.getCapacityRemaining());
+            slotMap.put("version", slot.getVersion());
+            if (slot.getCreatedAt() != null) {
+                slotMap.put("createdAt", slot.getCreatedAt().toString());
+            }
+            return slotMap;
+        }).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void deleteTimeSlot(Long timeSlotId) {
+        TimeSlot slot = timeSlotDao.findById(timeSlotId)
+                .orElseThrow(() -> new IllegalArgumentException("Time slot not found"));
+
+        Resource resource = resourceDao.findById(slot.getResourceId())
+                .orElseThrow(() -> new IllegalArgumentException("Resource not found"));
+
+        // Get all users who have reservations for this time slot
+        String sql = "SELECT DISTINCT user_id FROM reservation WHERE time_slot_id = ? AND status = 'CONFIRMED'";
+        List<Map<String, Object>> affectedReservations = jdbcTemplate.queryForList(sql, timeSlotId);
+        
+        java.util.Set<Long> affectedUserIds = new java.util.HashSet<>();
+        for (Map<String, Object> res : affectedReservations) {
+            Long userId = ((Number) getCaseInsensitive(res, "user_id")).longValue();
+            affectedUserIds.add(userId);
+        }
+
+        // Delete the time slot (CASCADE will delete reservations, holds, waitlist)
+        boolean deleted = timeSlotDao.delete(timeSlotId);
+        if (!deleted) {
+            throw new IllegalStateException("Failed to delete time slot");
+        }
+
+        // Log audit event
+        auditDao.logEvent("TIME_SLOT_DELETED", String.format(
+                "{\"timeSlotId\":%d,\"resourceId\":%d,\"resourceName\":\"%s\",\"startTs\":\"%s\",\"endTs\":\"%s\",\"affectedUsers\":%d}",
+                timeSlotId, slot.getResourceId(), resource.getName(), 
+                slot.getStartTs(), slot.getEndTs(), affectedUserIds.size()));
+
+        // Notify affected users
+        for (Long userId : affectedUserIds) {
+            notificationDao.create(userId, "TIME_SLOT_DELETED",
+                    String.format("Time slot for '%s' (%s - %s) has been deleted. Your reservation has been cancelled.", 
+                            resource.getName(), 
+                            slot.getStartTs().toString(), 
+                            slot.getEndTs().toString()));
+            
+            broadcastEvent("TimeSlotDeleted", Map.of(
+                    "timeSlotId", timeSlotId,
+                    "resourceId", slot.getResourceId(),
+                    "resourceName", resource.getName(),
+                    "userId", userId
+            ));
+        }
+
+        // Broadcast general availability change
+        broadcastEvent("TimeSlotDeleted", Map.of(
+                "timeSlotId", timeSlotId,
+                "resourceId", slot.getResourceId(),
+                "resourceName", resource.getName()
+        ));
+    }
+
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void cancelHold(Long userId, Long holdId) {
         Optional<Map<String, Object>> holdOpt = holdDao.findById(holdId);
@@ -393,13 +468,10 @@ public class ReservationService {
         Long timeSlotId = ((Number) getCaseInsensitive(hold, "time_slot_id")).longValue();
         Integer qty = ((Number) getCaseInsensitive(hold, "qty")).intValue();
 
-        // Get time slot to restore capacity
+        // Get time slot for waitlist promotion check
+        // Note: We don't increment capacity here because holds don't decrement capacity when placed.
+        // Holds are temporary reservations that don't actually reserve capacity until confirmed.
         Optional<TimeSlot> slotOpt = timeSlotDao.findById(timeSlotId);
-        if (slotOpt.isPresent()) {
-            TimeSlot slot = slotOpt.get();
-            // Restore capacity (no version check needed for incrementing)
-            timeSlotDao.incrementCapacity(timeSlotId, qty);
-        }
 
         // Delete the hold
         holdDao.delete(holdId);

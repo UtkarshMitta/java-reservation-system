@@ -3,7 +3,6 @@ package edu.nyu.cs9053.reservo.server.service;
 import edu.nyu.cs9053.reservo.server.dao.UserDao;
 import edu.nyu.cs9053.reservo.server.model.User;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -15,16 +14,19 @@ public class AuthService {
     @Autowired
     private UserDao userDao;
 
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    @Autowired
+    private PasswordService passwordService;
 
     public Optional<String> login(String username, String password) {
-        Optional<User> userOpt = userDao.findByUsername(username);
+        // Hash username before lookup
+        String usernameHash = passwordService.hashUsername(username);
+        Optional<User> userOpt = userDao.findByUsernameHash(usernameHash);
         if (userOpt.isEmpty()) {
             return Optional.empty();
         }
 
         User user = userOpt.get();
-        if (passwordEncoder.matches(password, user.getPasswordHash())) {
+        if (passwordService.verifyPassword(password, user.getPasswordHash())) {
             // Simple token generation (in production, use JWT)
             String token = UUID.randomUUID().toString();
             return Optional.of(token);
@@ -33,7 +35,9 @@ public class AuthService {
     }
 
     public User register(String username, String password, String email) {
-        if (userDao.findByUsername(username).isPresent()) {
+        // Hash username before checking existence
+        String usernameHash = passwordService.hashUsername(username);
+        if (userDao.findByUsernameHash(usernameHash).isPresent()) {
             throw new IllegalArgumentException("Username already exists");
         }
 
@@ -48,8 +52,9 @@ public class AuthService {
         }
 
         User user = new User();
-        user.setUsername(username);
-        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setUsername(username); // Store plain username for display
+        user.setUsernameHash(usernameHash); // Store hashed username for lookup
+        user.setPasswordHash(passwordService.hashPassword(password)); // Hash with salt+pepper
         user.setEmail(email);
         user.setIsAdmin(false);
 
@@ -77,7 +82,7 @@ public class AuthService {
         }
 
         User user = userOpt.get();
-        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+        if (!passwordService.verifyPassword(oldPassword, user.getPasswordHash())) {
             throw new IllegalArgumentException("Current password is incorrect");
         }
 
@@ -85,11 +90,13 @@ public class AuthService {
             throw new IllegalArgumentException("New password must be at least 3 characters");
         }
 
-        userDao.updatePassword(userId, passwordEncoder.encode(newPassword));
+        userDao.updatePassword(userId, passwordService.hashPassword(newPassword));
     }
 
     public Optional<User> getUserByUsername(String username) {
-        return userDao.findByUsername(username);
+        // Hash username before lookup
+        String usernameHash = passwordService.hashUsername(username);
+        return userDao.findByUsernameHash(usernameHash);
     }
 
     public Optional<User> getUserById(Long id) {

@@ -441,37 +441,8 @@ public class AdminViewController {
                                 Integer slotDuration = ((Number) resource.get("slotDurationMinutes")).intValue();
                                 Integer bookingHorizon = ((Number) resource.get("bookingHorizonDays")).intValue();
                                 
-                                // Create resource card
-                                VBox resourceCard = new VBox(10);
-                                resourceCard.setStyle(UIStyles.sectionCard());
-                                resourceCard.setPadding(new Insets(15));
-                                
-                                HBox headerBox = new HBox(10);
-                                headerBox.setAlignment(Pos.CENTER_LEFT);
-                                
-                                Label nameLabel = new Label(name);
-                                nameLabel.setStyle(String.format(
-                                    "-fx-font-size: 16px; " +
-                                    "-fx-font-weight: bold; " +
-                                    "-fx-text-fill: %s;",
-                                    UIStyles.NYU_VIOLET
-                                ));
-                                
-                                Button deleteButton = new Button("🗑️ Delete");
-                                deleteButton.setStyle(UIStyles.dangerButton());
-                                deleteButton.setPrefWidth(100);
-                                deleteButton.setOnAction(e -> deleteResource(id, name));
-                                
-                                HBox.setHgrow(nameLabel, javafx.scene.layout.Priority.ALWAYS);
-                                headerBox.getChildren().addAll(nameLabel, deleteButton);
-                                
-                                Label detailsLabel = new Label(String.format(
-                                    "ID: %d | Capacity: %d | Slot Duration: %d min | Booking Horizon: %d days",
-                                    id, capacity, slotDuration, bookingHorizon
-                                ));
-                                detailsLabel.setStyle(String.format("-fx-font-size: 12px; -fx-text-fill: %s;", UIStyles.TEXT_LIGHT));
-                                
-                                resourceCard.getChildren().addAll(headerBox, detailsLabel);
+                                // Create resource card with expandable time slots
+                                VBox resourceCard = createResourceCardWithTimeSlots(id, name, capacity, slotDuration, bookingHorizon);
                                 resourcesContainer.getChildren().add(resourceCard);
                             }
                         }
@@ -489,17 +460,216 @@ public class AdminViewController {
         new Thread(loadTask).start();
     }
 
+    private VBox createResourceCardWithTimeSlots(Long resourceId, String resourceName, 
+                                                  Integer capacity, Integer slotDuration, Integer bookingHorizon) {
+        VBox resourceCard = new VBox(10);
+        resourceCard.setStyle(UIStyles.sectionCard());
+        resourceCard.setPadding(new Insets(15));
+        
+        HBox headerBox = new HBox(10);
+        headerBox.setAlignment(Pos.CENTER_LEFT);
+        
+        Label nameLabel = new Label(resourceName);
+        nameLabel.setStyle(String.format(
+            "-fx-font-size: 16px; " +
+            "-fx-font-weight: bold; " +
+            "-fx-text-fill: %s;",
+            UIStyles.NYU_VIOLET
+        ));
+        
+        Button showTimeSlotsButton = new Button("📅 View Time Slots");
+        showTimeSlotsButton.setStyle(UIStyles.secondaryButton());
+        showTimeSlotsButton.setPrefWidth(150);
+        
+        Button deleteResourceButton = new Button("🗑️ Delete Category");
+        deleteResourceButton.setStyle(UIStyles.dangerButton());
+        deleteResourceButton.setPrefWidth(150);
+        deleteResourceButton.setOnAction(e -> deleteResource(resourceId, resourceName));
+        
+        HBox.setHgrow(nameLabel, javafx.scene.layout.Priority.ALWAYS);
+        headerBox.getChildren().addAll(nameLabel, showTimeSlotsButton, deleteResourceButton);
+        
+        Label detailsLabel = new Label(String.format(
+            "ID: %d | Capacity: %d | Slot Duration: %d min | Booking Horizon: %d days",
+            resourceId, capacity, slotDuration, bookingHorizon
+        ));
+        detailsLabel.setStyle(String.format("-fx-font-size: 12px; -fx-text-fill: %s;", UIStyles.TEXT_LIGHT));
+        
+        VBox timeSlotsContainer = new VBox(5);
+        timeSlotsContainer.setVisible(false);
+        timeSlotsContainer.setManaged(false);
+        
+        showTimeSlotsButton.setOnAction(e -> {
+            if (timeSlotsContainer.isVisible()) {
+                timeSlotsContainer.setVisible(false);
+                timeSlotsContainer.setManaged(false);
+                showTimeSlotsButton.setText("📅 View Time Slots");
+            } else {
+                loadTimeSlotsForResource(resourceId, resourceName, timeSlotsContainer);
+                timeSlotsContainer.setVisible(true);
+                timeSlotsContainer.setManaged(true);
+                showTimeSlotsButton.setText("🔼 Hide Time Slots");
+            }
+        });
+        
+        resourceCard.getChildren().addAll(headerBox, detailsLabel, timeSlotsContainer);
+        return resourceCard;
+    }
+
+    private void loadTimeSlotsForResource(Long resourceId, String resourceName, VBox container) {
+        container.getChildren().clear();
+        container.getChildren().add(new Label("Loading time slots..."));
+        
+        Task<List<Map<String, Object>>> loadTask = new Task<List<Map<String, Object>>>() {
+            @Override
+            protected List<Map<String, Object>> call() throws Exception {
+                return apiClient.getTimeSlotsForResource(resourceId);
+            }
+        };
+        
+        loadTask.setOnSucceeded(event -> {
+            Platform.runLater(() -> {
+                try {
+                    List<Map<String, Object>> timeSlots = loadTask.getValue();
+                    container.getChildren().clear();
+                    
+                    if (timeSlots == null || timeSlots.isEmpty()) {
+                        Label noSlots = new Label("No time slots found");
+                        noSlots.setStyle(String.format("-fx-font-size: 12px; -fx-text-fill: %s;", UIStyles.TEXT_LIGHT));
+                        container.getChildren().add(noSlots);
+                        return;
+                    }
+                    
+                    Label slotsTitle = new Label("Time Slots:");
+                    slotsTitle.setStyle(String.format("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: %s;", UIStyles.TEXT_DARK));
+                    container.getChildren().add(slotsTitle);
+                    
+                    for (Map<String, Object> slot : timeSlots) {
+                        Long slotId = ((Number) slot.get("id")).longValue();
+                        String startTs = (String) slot.get("startTs");
+                        String endTs = (String) slot.get("endTs");
+                        Integer capacityRemaining = ((Number) slot.get("capacityRemaining")).intValue();
+                        
+                        HBox slotRow = new HBox(10);
+                        slotRow.setAlignment(Pos.CENTER_LEFT);
+                        slotRow.setPadding(new Insets(5));
+                        slotRow.setStyle(String.format(
+                            "-fx-background-color: %s; " +
+                            "-fx-background-radius: 5; " +
+                            "-fx-padding: 8;",
+                            UIStyles.BG_LIGHT
+                        ));
+                        
+                        Label slotInfo = new Label(String.format(
+                            "ID: %d | %s - %s | Capacity: %d",
+                            slotId, startTs, endTs, capacityRemaining
+                        ));
+                        slotInfo.setStyle(String.format("-fx-font-size: 12px; -fx-text-fill: %s;", UIStyles.TEXT_DARK));
+                        
+                        Button deleteSlotButton = new Button("🗑️ Delete");
+                        deleteSlotButton.setStyle(UIStyles.dangerButton());
+                        deleteSlotButton.setPrefWidth(100);
+                        deleteSlotButton.setOnAction(e -> deleteTimeSlot(slotId, resourceName, startTs, endTs));
+                        
+                        HBox.setHgrow(slotInfo, javafx.scene.layout.Priority.ALWAYS);
+                        slotRow.getChildren().addAll(slotInfo, deleteSlotButton);
+                        container.getChildren().add(slotRow);
+                    }
+                } catch (Exception ex) {
+                    container.getChildren().clear();
+                    Label errorLabel = new Label("Failed to load time slots: " + ex.getMessage());
+                    errorLabel.setStyle(UIStyles.statusError());
+                    container.getChildren().add(errorLabel);
+                }
+            });
+        });
+        
+        loadTask.setOnFailed(event -> {
+            Platform.runLater(() -> {
+                container.getChildren().clear();
+                Label errorLabel = new Label("Failed to load time slots: " + loadTask.getException().getMessage());
+                errorLabel.setStyle(UIStyles.statusError());
+                container.getChildren().add(errorLabel);
+            });
+        });
+        
+        new Thread(loadTask).start();
+    }
+
+    private void deleteTimeSlot(Long timeSlotId, String resourceName, String startTs, String endTs) {
+        Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmDialog.setTitle("Delete Time Slot");
+        confirmDialog.setHeaderText("Delete Time Slot Instance");
+        confirmDialog.setContentText(String.format(
+            "Are you sure you want to delete this time slot?\n\n" +
+            "Resource: %s\n" +
+            "Time: %s - %s\n\n" +
+            "⚠️ WARNING: This will delete:\n" +
+            "• This specific time slot instance\n" +
+            "• All reservations for this time slot\n" +
+            "• All holds for this time slot\n" +
+            "• All waitlist entries for this time slot\n\n" +
+            "The resource category will remain intact.\n" +
+            "Affected users will be notified.",
+            resourceName, startTs, endTs
+        ));
+        
+        confirmDialog.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.OK) {
+                Task<Void> deleteTask = new Task<Void>() {
+                    @Override
+                    protected Void call() throws Exception {
+                        apiClient.deleteTimeSlot(timeSlotId);
+                        return null;
+                    }
+                };
+
+                deleteTask.setOnSucceeded(event -> {
+                    Platform.runLater(() -> {
+                        Alert successAlert = new Alert(Alert.AlertType.INFORMATION);
+                        successAlert.setTitle("Success");
+                        successAlert.setHeaderText("Time Slot Deleted");
+                        successAlert.setContentText(String.format(
+                            "Time slot for '%s' (%s - %s) has been deleted successfully.\n" +
+                            "All related reservations, holds, and waitlist entries have been removed.\n" +
+                            "Affected users have been notified.\n\n" +
+                            "The resource category remains intact.",
+                            resourceName, startTs, endTs
+                        ));
+                        successAlert.showAndWait();
+                        refreshResourcesList(); // Refresh to update time slots
+                    });
+                });
+
+                deleteTask.setOnFailed(event -> {
+                    Platform.runLater(() -> {
+                        String errorMsg = deleteTask.getException().getMessage();
+                        Alert errorAlert = new Alert(Alert.AlertType.ERROR);
+                        errorAlert.setTitle("Error");
+                        errorAlert.setHeaderText("Failed to Delete Time Slot");
+                        errorAlert.setContentText("Failed to delete time slot: " + errorMsg);
+                        errorAlert.showAndWait();
+                    });
+                });
+
+                new Thread(deleteTask).start();
+            }
+        });
+    }
+
     private void deleteResource(Long resourceId, String resourceName) {
         Alert confirmDialog = new Alert(Alert.AlertType.CONFIRMATION);
-        confirmDialog.setTitle("Delete Resource");
-        confirmDialog.setHeaderText("Delete Resource");
+        confirmDialog.setTitle("Delete Resource Category");
+        confirmDialog.setHeaderText("Delete Entire Resource Category");
         confirmDialog.setContentText(String.format(
-            "Are you sure you want to delete '%s'?\n\n" +
+            "Are you sure you want to delete the entire resource category '%s'?\n\n" +
             "⚠️ WARNING: This will delete:\n" +
-            "• All time slots for this resource\n" +
-            "• All reservations for this resource\n" +
-            "• All holds for this resource\n" +
-            "• All waitlist entries for this resource\n\n" +
+            "• The entire resource category\n" +
+            "• ALL time slots for this resource\n" +
+            "• ALL reservations for this resource\n" +
+            "• ALL holds for this resource\n" +
+            "• ALL waitlist entries for this resource\n\n" +
+            "This action cannot be undone.\n" +
             "Affected users will be notified.",
             resourceName
         ));
@@ -518,10 +688,10 @@ public class AdminViewController {
                     Platform.runLater(() -> {
                         Alert successAlert = new Alert(Alert.AlertType.INFORMATION);
                         successAlert.setTitle("Success");
-                        successAlert.setHeaderText("Resource Deleted");
+                        successAlert.setHeaderText("Resource Category Deleted");
                         successAlert.setContentText(String.format(
-                            "Resource '%s' has been deleted successfully.\n" +
-                            "All related reservations, holds, and waitlist entries have been removed.\n" +
+                            "Resource category '%s' has been deleted successfully.\n" +
+                            "All related time slots, reservations, holds, and waitlist entries have been removed.\n" +
                             "Affected users have been notified.",
                             resourceName
                         ));
@@ -535,8 +705,8 @@ public class AdminViewController {
                         String errorMsg = deleteTask.getException().getMessage();
                         Alert errorAlert = new Alert(Alert.AlertType.ERROR);
                         errorAlert.setTitle("Error");
-                        errorAlert.setHeaderText("Failed to Delete Resource");
-                        errorAlert.setContentText("Failed to delete resource: " + errorMsg);
+                        errorAlert.setHeaderText("Failed to Delete Resource Category");
+                        errorAlert.setContentText("Failed to delete resource category: " + errorMsg);
                         errorAlert.showAndWait();
                     });
                 });

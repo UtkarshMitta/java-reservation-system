@@ -74,6 +74,42 @@ public class AdminController {
         }
     }
 
+    @GetMapping("/resources/{resourceId}/time-slots")
+    public ResponseEntity<?> getTimeSlotsForResource(
+            @PathVariable("resourceId") Long resourceId,
+            @RequestHeader(value = "Authorization", required = false) String token) {
+        try {
+            checkAdmin(token);
+            List<Map<String, Object>> timeSlots = reservationService.getTimeSlotsForResource(resourceId);
+            return ResponseEntity.ok(timeSlots);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/time-slots/{id}")
+    public ResponseEntity<?> deleteTimeSlot(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String token) {
+        try {
+            checkAdmin(token);
+            reservationService.deleteTimeSlot(id);
+            return ResponseEntity.ok(Map.of("message", "Time slot deleted successfully"));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/isolation-mode")
     public ResponseEntity<?> setIsolationMode(
             @RequestBody Map<String, String> request,

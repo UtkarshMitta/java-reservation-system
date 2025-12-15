@@ -27,9 +27,9 @@ public class ResourceController {
 
     @GetMapping("/{resourceId}/availability")
     public ResponseEntity<?> getAvailability(
-            @PathVariable Long resourceId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @PathVariable("resourceId") Long resourceId,
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         try {
             return ResponseEntity.ok(reservationService.getAvailability(resourceId, from, to));
         } catch (IllegalArgumentException e) {

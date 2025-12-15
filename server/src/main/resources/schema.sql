@@ -3,7 +3,8 @@
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(50) UNIQUE NOT NULL,
+    username VARCHAR(50) NOT NULL,
+    username_hash VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(100),
     is_admin BOOLEAN DEFAULT FALSE,

@@ -1,6 +1,8 @@
 package edu.nyu.cs9053.reservo.client;
 
 import edu.nyu.cs9053.reservo.client.api.ApiClient;
+import javafx.application.Platform;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
@@ -45,23 +47,79 @@ public class NotificationsViewController {
     }
 
     private void loadNotifications() {
-        try {
-            List<Map<String, Object>> notifications = apiClient.getNotifications();
-            notificationsList.getItems().clear();
-
-            for (Map<String, Object> notif : notifications) {
-                String type = (String) notif.get("type");
-                String message = (String) notif.get("message");
-                Boolean read = (Boolean) notif.get("read");
-                String display = String.format("[%s] %s", type, message);
-                if (!read) {
-                    display = "● " + display;
-                }
-                notificationsList.getItems().add(display);
+        notificationsList.getItems().clear();
+        notificationsList.getItems().add("Loading...");
+        
+        Task<List<Map<String, Object>>> loadTask = new Task<List<Map<String, Object>>>() {
+            @Override
+            protected List<Map<String, Object>> call() throws Exception {
+                return apiClient.getNotifications();
             }
-        } catch (Exception e) {
-            showError("Failed to load notifications: " + e.getMessage());
-        }
+        };
+        
+        loadTask.setOnSucceeded(event -> {
+            Platform.runLater(() -> {
+                try {
+                    List<Map<String, Object>> notifications = loadTask.getValue();
+                    notificationsList.getItems().clear();
+                    
+                    if (notifications == null || notifications.isEmpty()) {
+                        notificationsList.getItems().add("No notifications");
+                        return;
+                    }
+
+                    for (Map<String, Object> notif : notifications) {
+                        Object typeObj = getValueCaseInsensitive(notif, "type");
+                        Object messageObj = getValueCaseInsensitive(notif, "message");
+                        Object readObj = getValueCaseInsensitive(notif, "read");
+                        
+                        String type = typeObj != null ? typeObj.toString() : "UNKNOWN";
+                        String message = messageObj != null ? messageObj.toString() : "No message";
+                        
+                        // Handle read field - can be Boolean, boolean, or null
+                        boolean isRead = false;
+                        if (readObj != null) {
+                            if (readObj instanceof Boolean) {
+                                isRead = ((Boolean) readObj).booleanValue();
+                            } else if (readObj instanceof String) {
+                                isRead = Boolean.parseBoolean((String) readObj);
+                            } else if (readObj instanceof Number) {
+                                isRead = ((Number) readObj).intValue() != 0;
+                            }
+                        }
+                        
+                        String display = String.format("[%s] %s", type, message);
+                        if (!isRead) {
+                            display = "● " + display;
+                        }
+                        notificationsList.getItems().add(display);
+                    }
+                } catch (Exception ex) {
+                    notificationsList.getItems().clear();
+                    showError("Failed to load notifications: " + ex.getMessage());
+                }
+            });
+        });
+        
+        loadTask.setOnFailed(event -> {
+            Platform.runLater(() -> {
+                notificationsList.getItems().clear();
+                showError("Failed to load notifications: " + loadTask.getException().getMessage());
+            });
+        });
+        
+        new Thread(loadTask).start();
+    }
+
+    private Object getValueCaseInsensitive(Map<String, Object> map, String key) {
+        // H2 returns uppercase column names, so check both cases
+        if (map.containsKey(key)) return map.get(key);
+        if (map.containsKey(key.toUpperCase())) return map.get(key.toUpperCase());
+        if (map.containsKey(key.toLowerCase())) return map.get(key.toLowerCase());
+        // Also check with underscores converted
+        String upperKey = key.toUpperCase().replace("_", "_");
+        if (map.containsKey(upperKey)) return map.get(upperKey);
+        return null;
     }
 
     public VBox getView() {

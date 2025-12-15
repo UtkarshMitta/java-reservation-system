@@ -23,6 +23,13 @@ public class UserDao {
             User user = new User();
             user.setId(rs.getLong("id"));
             user.setUsername(rs.getString("username"));
+            // Handle username_hash column (may be null for old records)
+            try {
+                user.setUsernameHash(rs.getString("username_hash"));
+            } catch (SQLException e) {
+                // Column doesn't exist or is null - will be set during migration
+                user.setUsernameHash(null);
+            }
             user.setPasswordHash(rs.getString("password_hash"));
             user.setEmail(rs.getString("email"));
             user.setIsAdmin(rs.getBoolean("is_admin"));
@@ -33,6 +40,14 @@ public class UserDao {
         }
     };
 
+    public Optional<User> findByUsernameHash(String usernameHash) {
+        String sql = "SELECT * FROM users WHERE username_hash = ?";
+        List<User> users = jdbcTemplate.query(sql, USER_MAPPER, usernameHash);
+        return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
+    }
+
+    // Keep for backward compatibility during migration
+    @Deprecated
     public Optional<User> findByUsername(String username) {
         String sql = "SELECT * FROM users WHERE username = ?";
         List<User> users = jdbcTemplate.query(sql, USER_MAPPER, username);
@@ -46,10 +61,10 @@ public class UserDao {
     }
 
     public User create(User user) {
-        String sql = "INSERT INTO users (username, password_hash, email, is_admin) VALUES (?, ?, ?, ?)";
-        jdbcTemplate.update(sql, user.getUsername(), user.getPasswordHash(), 
+        String sql = "INSERT INTO users (username, username_hash, password_hash, email, is_admin) VALUES (?, ?, ?, ?, ?)";
+        jdbcTemplate.update(sql, user.getUsername(), user.getUsernameHash(), user.getPasswordHash(), 
                           user.getEmail(), user.getIsAdmin());
-        return findByUsername(user.getUsername()).orElseThrow();
+        return findByUsernameHash(user.getUsernameHash()).orElseThrow();
     }
 
     public Optional<User> findByEmail(String email) {

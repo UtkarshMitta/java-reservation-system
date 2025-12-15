@@ -250,8 +250,10 @@ public class CalendarViewController {
 
         String requestId = UUID.randomUUID().toString();
         final Long[] holdIdRef = new Long[1];
+        final Integer[] holdQtyRef = new Integer[1];
         final boolean[] holdPlaced = new boolean[1];
         holdIdRef[0] = null;
+        holdQtyRef[0] = null;
         holdPlaced[0] = false;
 
         // Disable confirm button while placing hold, but keep cancel enabled
@@ -272,6 +274,7 @@ public class CalendarViewController {
                 try {
                     Map<String, Object> hold = placeHoldTask.getValue();
                     holdIdRef[0] = ((Number) hold.get("id")).longValue();
+                    holdQtyRef[0] = qtySpinner.getValue(); // Store the quantity used for the hold
                     holdPlaced[0] = true;
                     String expiresAt = (String) hold.get("expiresAt");
                     confirmButton.setDisable(false);
@@ -312,9 +315,27 @@ public class CalendarViewController {
             statusLabel.setText("Confirming...");
             statusLabel.setStyle(UIStyles.statusInfo());
             
+            // Check if quantity has changed
+            Integer currentQty = qtySpinner.getValue();
+            final boolean qtyChanged = (holdQtyRef[0] == null || !holdQtyRef[0].equals(currentQty));
+            
             javafx.concurrent.Task<Map<String, Object>> confirmTask = new javafx.concurrent.Task<Map<String, Object>>() {
                 @Override
                 protected Map<String, Object> call() throws Exception {
+                    // If quantity changed, cancel old hold and create new one with correct quantity
+                    if (qtyChanged && holdIdRef[0] != null) {
+                        try {
+                            apiClient.cancelHold(holdIdRef[0]);
+                        } catch (Exception ex) {
+                            // Ignore cancel errors - hold might have expired
+                        }
+                        // Create new hold with correct quantity
+                        String newRequestId = UUID.randomUUID().toString();
+                        Map<String, Object> newHold = apiClient.placeHold(timeSlotId, currentQty, newRequestId);
+                        holdIdRef[0] = ((Number) newHold.get("id")).longValue();
+                        holdQtyRef[0] = currentQty;
+                    }
+                    // Confirm the hold (with correct quantity)
                     apiClient.confirmHold(holdIdRef[0]);
                     return Map.of("success", true);
                 }

@@ -88,5 +88,16 @@ public class TimeSlotDao {
         jdbcTemplate.update(sql, slot.getResourceId(), slot.getStartTs(), 
                           slot.getEndTs(), slot.getCapacityRemaining(), slot.getVersion());
     }
+
+    public List<TimeSlot> findByResource(Long resourceId) {
+        String sql = "SELECT * FROM time_slot WHERE resource_id = ? ORDER BY start_ts";
+        return jdbcTemplate.query(sql, TIME_SLOT_MAPPER, resourceId);
+    }
+
+    @Transactional
+    public boolean delete(Long id) {
+        String sql = "DELETE FROM time_slot WHERE id = ?";
+        return jdbcTemplate.update(sql, id) > 0;
+    }
 }
 

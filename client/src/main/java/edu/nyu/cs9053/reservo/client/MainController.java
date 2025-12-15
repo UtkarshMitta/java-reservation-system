@@ -215,7 +215,9 @@ public class MainController {
         Scene scene = new Scene(root, 450, 500);
         primaryStage.setTitle("Reservo - NYU Resource Reservation");
         primaryStage.setScene(scene);
-        primaryStage.setResizable(false);
+        primaryStage.setResizable(true);
+        primaryStage.setMinWidth(450);
+        primaryStage.setMinHeight(500);
         primaryStage.show();
     }
 
@@ -308,6 +310,9 @@ public class MainController {
         Scene scene = new Scene(tabPane, 1200, 800);
         primaryStage.setTitle("Reservo - " + currentUser + " | NYU Resource Reservation");
         primaryStage.setScene(scene);
+        primaryStage.setResizable(true);
+        primaryStage.setMinWidth(800);
+        primaryStage.setMinHeight(600);
     }
 
     private void handleLogout() {

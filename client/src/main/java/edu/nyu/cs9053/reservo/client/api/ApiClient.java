@@ -381,6 +381,49 @@ public class ApiClient {
         }
     }
 
+    public List<Map<String, Object>> getTimeSlotsForResource(Long resourceId) throws IOException {
+        Request request = requestBuilder()
+                .url(BASE_URL + "/admin/resources/" + resourceId + "/time-slots")
+                .get()
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            String responseBody = response.body().string();
+            if (response.isSuccessful()) {
+                Type listType = new TypeToken<List<Map<String, Object>>>(){}.getType();
+                return gson.fromJson(responseBody, listType);
+            } else {
+                try {
+                    Map<String, Object> errorResponse = gson.fromJson(responseBody, Map.class);
+                    if (errorResponse != null && errorResponse.containsKey("error")) {
+                        throw new IOException("Failed to get time slots: " + errorResponse.get("error"));
+                    }
+                } catch (Exception ignored) {}
+                throw new IOException("Failed to get time slots: " + responseBody);
+            }
+        }
+    }
+
+    public void deleteTimeSlot(Long timeSlotId) throws IOException {
+        Request request = requestBuilder()
+                .url(BASE_URL + "/admin/time-slots/" + timeSlotId)
+                .delete()
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            String responseBody = response.body().string();
+            if (!response.isSuccessful()) {
+                try {
+                    Map<String, Object> errorResponse = gson.fromJson(responseBody, Map.class);
+                    if (errorResponse != null && errorResponse.containsKey("error")) {
+                        throw new IOException("Failed to delete time slot: " + errorResponse.get("error"));
+                    }
+                } catch (Exception ignored) {}
+                throw new IOException("Failed to delete time slot: " + responseBody);
+            }
+        }
+    }
+
     public Map<String, Object> simulateContention(Long timeSlotId, Integer numThreads, Integer qty) throws IOException {
         Map<String, Object> body = Map.of(
                 "timeSlotId", timeSlotId,
